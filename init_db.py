@@ -92,7 +92,7 @@ def seed_demo(cur):
     )
 
     lessons = [
-        ("l_demo1", "1-1", "Preview", "Meet the Colours", 0, {"blocks": [
+        ("l_demo1", "1-1", "Preview", "Meet the Colours", 0, True, {"blocks": [
             {"id": "b_t1", "type": "title", "text": "Colours Around Us"},
             {"id": "b_x1", "type": "text",
              "text": "Say each colour out loud as you read it. Red, blue, yellow, green."},
@@ -107,7 +107,7 @@ def seed_demo(cur):
             {"id": "b_q2", "type": "quiz_open",
              "question": "Write three things that are red."},
         ]}),
-        ("l_demo2", "1-2", "Main", "Shapes We See", 1, {"blocks": [
+        ("l_demo2", "1-2", "Main", "Shapes We See", 1, True, {"blocks": [
             {"id": "b_t2", "type": "title", "text": "Circles, Squares, Triangles"},
             {"id": "b_x2", "type": "text",
              "text": "A circle is round. A square has four equal sides."},
@@ -120,20 +120,21 @@ def seed_demo(cur):
              "feedbackCorrect": "Correct — tri means three!",
              "feedbackWrong": "Count the corners again."},
         ]}),
-        ("l_demo3", "1-3", "Review", "Colour & Shape Review", 2, {"blocks": [
+        ("l_demo3", "1-3", "Review", "Colour & Shape Review", 2, False, {"blocks": [
             {"id": "b_t3", "type": "title", "text": "Let's Review"},
             {"id": "b_q4", "type": "quiz_open",
              "question": "Describe your favourite toy using a colour and a shape."},
         ]}),
     ]
-    for lid, code, kind, title, order, content in lessons:
+    for lid, code, kind, title, order, is_open, content in lessons:
         cur.execute(
-            """INSERT INTO lessons (id, course_id, code, kind, title, sort_order, content_json)
-               VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """INSERT INTO lessons (id, course_id, code, kind, title, sort_order, is_open, content_json)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title,
+                                              is_open = EXCLUDED.is_open,
                                               content_json = EXCLUDED.content_json,
                                               updated_at = now()""",
-            (lid, course_id, code, kind, title, order, Jsonb(content)),
+            (lid, course_id, code, kind, title, order, is_open, Jsonb(content)),
         )
 
     cur.execute(

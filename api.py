@@ -109,13 +109,56 @@ def hydrate_blocks(blocks):
     return out
 
 
+def _ext_of(key):
+    return key.rsplit(".", 1)[-1] if key and "." in key else "bin"
+
+
+def duplicate_content(content, new_lesson_id):
+    """Deep-copy a lesson's content_json for duplication. Every block id and every
+    quiz_mc option id is regenerated (and correctId remapped) — mandatory, because
+    responses are keyed UNIQUE(user_id, block_id) globally, so a reused id would collide
+    across the original and the copy (CLAUDE.md §3B). Any uploaded-media block gets its
+    own S3 copy under the new lesson/block path, so the copy never shares the original's
+    object. Signed `url`s are dropped (derived on read, never stored)."""
+    blocks = []
+    for old in (content or {}).get("blocks", []):
+        block = dict(old)
+        block.pop("url", None)
+        new_block_id = db.new_id("b")
+        block["id"] = new_block_id
+
+        if block.get("type") == "quiz_mc" and isinstance(block.get("options"), list):
+            id_map, new_options = {}, []
+            for opt in block["options"]:
+                opt = dict(opt)
+                new_oid = db.new_id("o")
+                id_map[opt.get("id")] = new_oid
+                opt["id"] = new_oid
+                new_options.append(opt)
+            block["options"] = new_options
+            if block.get("correctId") in id_map:
+                block["correctId"] = id_map[block["correctId"]]
+
+        if block.get("key"):
+            new_key = f"lessons/{new_lesson_id}/{new_block_id}.{_ext_of(block['key'])}"
+            # If the copy fails (source gone), keep the old key — a shared reference is
+            # less bad than a key pointing at nothing.
+            block["key"] = storage.copy(block["key"], new_key) or block["key"]
+
+        blocks.append(block)
+    return {"blocks": blocks}
+
+
 def lessons_with_state(user, course_id):
     """This course's lessons in order, each carrying `completed` and `unlocked` for this
     user. One query — the database is remote, so round trips are the thing to spend
     carefully.
 
-    Unlocked iff first lesson, or the immediately preceding one is completed. Computed
-    live on every read (CLAUDE.md §3C) — never cached, never stored.
+    A lesson is unlocked for a student iff the teacher has opened it (`is_open`) — the
+    teacher releases lessons manually; there is no automatic ordering. The teacher sees
+    every lesson unlocked so they can edit and preview. `completed` (from
+    lesson_completions) is kept for progress only; it no longer gates. Computed live on
+    every read (CLAUDE.md §3C) — never cached, never stored.
     """
     lessons = db.query(
         """SELECT l.*, (lc.id IS NOT NULL) AS completed
@@ -127,10 +170,8 @@ def lessons_with_state(user, course_id):
         (user["id"], course_id),
     )
     teacher = user["role"] == "teacher"
-    previous_done = True  # the first lesson is always unlocked
     for lesson in lessons:
-        lesson["unlocked"] = True if teacher else previous_done
-        previous_done = lesson["completed"]
+        lesson["unlocked"] = True if teacher else lesson["is_open"]
     return lessons
 
 
@@ -444,6 +485,71 @@ def delete_course(course_id):
     return jsonify(ok=True)
 
 
+@api.post("/courses/<course_id>/duplicate")
+@owner_required
+def duplicate_course(course_id):
+    """Copy a course and everything that describes it — lessons (deep-copied), title card,
+    gallery photos, testimonials — into a new course. The copy starts unpublished,
+    unpromoted, and with every lesson closed. Per-student data (enrollments, responses,
+    completions) is deliberately NOT copied. Runs in the request transaction, so a failure
+    rolls the whole thing back (leaving at most a few orphaned S3 copies, which are harmless)."""
+    src = db.one("SELECT * FROM courses WHERE id = %s", (course_id,))
+    if src is None:
+        return jsonify(error="No such course."), 404
+
+    new_id = db.new_id("c")
+
+    new_card_key = None
+    if src["title_card_key"]:
+        new_card_key = storage.copy(
+            src["title_card_key"], f"courses/{new_id}/title-card.{_ext_of(src['title_card_key'])}"
+        )
+
+    db.execute(
+        """INSERT INTO courses (id, title, category_id, overview, goals, title_card_key,
+                                sort_order, published, promoted)
+           VALUES (%s, %s, %s, %s, %s, %s, %s, false, false)""",
+        (new_id, src["title"] + " (copy)", src["category_id"], src["overview"],
+         Jsonb(src["goals"] or []), new_card_key, src["sort_order"]),
+    )
+
+    for t in db.query(
+        "SELECT * FROM testimonials WHERE course_id = %s ORDER BY sort_order, created_at",
+        (course_id,),
+    ):
+        db.execute(
+            """INSERT INTO testimonials (id, course_id, author_name, body, sort_order)
+               VALUES (%s, %s, %s, %s, %s)""",
+            (db.new_id("t"), new_id, t["author_name"], t["body"], t["sort_order"]),
+        )
+
+    for img in course_images(course_id):
+        new_img_id = db.new_id("cimg")
+        new_key = storage.copy(
+            img["key"], f"courses/{new_id}/gallery/{new_img_id}.{_ext_of(img['key'])}"
+        )
+        if new_key:
+            db.execute(
+                """INSERT INTO course_images (id, course_id, key, caption, sort_order)
+                   VALUES (%s, %s, %s, %s, %s)""",
+                (new_img_id, new_id, new_key, img["caption"], img["sort_order"]),
+            )
+
+    for lesson in db.query(
+        "SELECT * FROM lessons WHERE course_id = %s ORDER BY sort_order, code", (course_id,)
+    ):
+        new_lesson_id = db.new_id("l")
+        content = duplicate_content(lesson["content_json"], new_lesson_id)
+        db.execute(
+            """INSERT INTO lessons (id, course_id, code, kind, title, sort_order, is_open, content_json)
+               VALUES (%s, %s, %s, %s, %s, %s, false, %s)""",
+            (new_lesson_id, new_id, lesson["code"], lesson["kind"], lesson["title"],
+             lesson["sort_order"], Jsonb(content)),
+        )
+
+    return jsonify(id=new_id), 201
+
+
 @api.post("/courses/<course_id>/title-card")
 @owner_required
 def upload_title_card(course_id):
@@ -561,6 +667,7 @@ def course_detail(course_id):
             "id": l["id"], "code": l["code"], "kind": l["kind"], "title": l["title"],
             "sort_order": l["sort_order"],
             "block_count": len(blocks_of(l)),
+            "is_open": l["is_open"],
             "unlocked": l["unlocked"],
             "completed": l["completed"],
         } for l in lessons],
@@ -665,7 +772,7 @@ def get_lesson(lesson_id):
 
     state = lesson_lock_state(user, lesson["course_id"])[lesson_id]
     if not state["unlocked"]:
-        return jsonify(error="Finish the previous lesson first."), 403
+        return jsonify(error="This lesson isn't open yet."), 403
 
     course = db.one("SELECT id, title FROM courses WHERE id = %s", (lesson["course_id"],))
     answers = {
@@ -699,6 +806,9 @@ def update_lesson(lesson_id):
     for field in {"title", "code", "kind", "sort_order"} & set(data):
         sets.append(f"{field} = %s")
         params.append(data[field])
+    if "is_open" in data:
+        sets.append("is_open = %s")
+        params.append(bool(data["is_open"]))
     if "content_json" in data:
         content = data["content_json"]
         if not isinstance(content, dict) or not isinstance(content.get("blocks"), list):
@@ -722,6 +832,29 @@ def update_lesson(lesson_id):
 def delete_lesson(lesson_id):
     db.execute("DELETE FROM lessons WHERE id = %s", (lesson_id,))
     return jsonify(ok=True)
+
+
+@api.post("/lessons/<lesson_id>/duplicate")
+@owner_required
+def duplicate_lesson(lesson_id):
+    """Copy a lesson within its course. Fresh block ids + media; starts closed."""
+    src = db.one("SELECT * FROM lessons WHERE id = %s", (lesson_id,))
+    if src is None:
+        return jsonify(error="No such lesson."), 404
+
+    new_id = db.new_id("l")
+    nxt = db.one(
+        "SELECT coalesce(max(sort_order), -1) + 1 AS n FROM lessons WHERE course_id = %s",
+        (src["course_id"],),
+    )["n"]
+    content = duplicate_content(src["content_json"], new_id)
+    db.execute(
+        """INSERT INTO lessons (id, course_id, code, kind, title, sort_order, is_open, content_json)
+           VALUES (%s, %s, %s, %s, %s, %s, false, %s)""",
+        (new_id, src["course_id"], src["code"], src["kind"], src["title"] + " (copy)",
+         nxt, Jsonb(content)),
+    )
+    return jsonify(id=new_id), 201
 
 
 # Per-kind upload rules: which content types are allowed, and the size cap in MB.
@@ -773,7 +906,7 @@ def submit_response(lesson_id):
     if not can_view_course(lesson["course_id"]):
         return jsonify(error="You don't have access to this course."), 403
     if not lesson_lock_state(user, lesson["course_id"])[lesson_id]["unlocked"]:
-        return jsonify(error="Finish the previous lesson first."), 403
+        return jsonify(error="This lesson isn't open yet."), 403
 
     block = next((b for b in blocks_of(lesson) if b.get("id") == block_id), None)
     if block is None:
@@ -804,7 +937,7 @@ def complete_lesson(lesson_id):
     if not can_view_course(lesson["course_id"]):
         return jsonify(error="You don't have access to this course."), 403
     if not lesson_lock_state(user, lesson["course_id"])[lesson_id]["unlocked"]:
-        return jsonify(error="Finish the previous lesson first."), 403
+        return jsonify(error="This lesson isn't open yet."), 403
 
     db.execute(
         """INSERT INTO lesson_completions (id, user_id, lesson_id)

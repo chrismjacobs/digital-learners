@@ -80,3 +80,19 @@ def delete(key):
         client().delete_object(Bucket=bucket(), Key=key)
     except ClientError:
         pass
+
+
+def copy(src_key, dst_key):
+    """Copy an object to a new key within the bucket (for duplicating a course/lesson, so
+    the copy owns its own media rather than sharing the original's). Returns dst_key, or
+    None if the source is missing/uncopyable."""
+    if not src_key:
+        return None
+    try:
+        client().copy_object(
+            Bucket=bucket(), Key=dst_key,
+            CopySource={"Bucket": bucket(), "Key": src_key},
+        )
+        return dst_key
+    except ClientError:
+        return None

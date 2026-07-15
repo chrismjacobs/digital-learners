@@ -182,7 +182,8 @@ CREATE TABLE lessons (
   code         text NOT NULL,      -- "1-1", "1-2" ... display + ordering aid
   kind         text NOT NULL,      -- "Preview" | "Main" | "Review" (label only)
   title        text NOT NULL,
-  sort_order   integer NOT NULL,   -- gating order within the course
+  sort_order   integer NOT NULL,   -- display order within the course
+  is_open      boolean NOT NULL DEFAULT false,  -- teacher releases it; students see open only
   content_json jsonb NOT NULL DEFAULT '{"blocks": []}'::jsonb,
   created_at   timestamptz NOT NULL DEFAULT now(),
   updated_at   timestamptz NOT NULL DEFAULT now()
@@ -388,8 +389,14 @@ DELETE /api/categories/:id                    (block/deny if any course still re
 
 GET    /api/courses/:id/lessons
 POST   /api/courses/:id/lessons              {code, kind, title}
-PATCH  /api/lessons/:id                       {title?, code?, content_json?, sort_order?}
+PATCH  /api/lessons/:id                       {title?, code?, content_json?, sort_order?, is_open?}
 DELETE /api/lessons/:id
+POST   /api/lessons/:id/duplicate            copy a lesson within its course
+POST   /api/courses/:id/duplicate            copy a whole course (lessons, media, testimonials)
+
+# Duplication regenerates every block id and quiz-mc option id (responses key on block_id
+# globally — §3B) and copies each block's/course's media to fresh S3 keys. Copies start
+# published=false, promoted=false, all lessons is_open=false; no per-student data is copied.
 
 GET    /api/courses/:id/testimonials
 POST   /api/courses/:id/testimonials         {author_name, body}
@@ -446,16 +453,21 @@ POST /api/my/uploads                           (multipart) student audio/photo �
 
 ## 7. Gating & progress (server-side)
 
-For a given student and course, order lessons by `sort_order`. A lesson is **unlocked**
-iff it is the first lesson OR the immediately preceding lesson has a `lesson_completions`
-row for that student. The first message a locked lesson gets from `GET /api/lessons/:id`
-must be `403`, not its content.
+Gating is **teacher-controlled**, not automatic. A lesson is **unlocked** for a student iff
+`lessons.is_open` is true — the teacher releases lessons by opening them; there is no required
+order, so among open lessons a student may work in any order. New lessons default to **closed**
+(`is_open = false`); the teacher opens each one to release it. The teacher always sees every
+lesson unlocked (to edit and preview). The single gate is `lessons_with_state`; a lesson that
+isn't open returns `403` (not its content) from `GET /api/lessons/:id`, `POST .../responses`,
+and `POST .../complete`.
 
-Progress on the dashboard = count of `lesson_completions` for the student in that course,
-over total lessons. Same table, two readers. Do not store a separate progress counter.
+Progress on the dashboard = count of `lesson_completions` for the student in that course, over
+total lessons. Same table, two readers. Do not store a separate progress counter.
 
-Completion is self-serve: `POST .../complete` succeeds without teacher action. (No
-"teacher must approve to unlock" in MVP — that would pull grading-shaped work in.)
+Completion is self-serve (`POST .../complete` needs no teacher action) but is **progress only** —
+it no longer unlocks anything. Releasing the next lesson is the teacher's open/close switch.
+(Earlier versions gated sequentially on completion; that was replaced by manual open/close so the
+teacher can hold lessons back even from a student who has finished the prerequisites.)
 
 ---
 
@@ -486,6 +498,15 @@ photos), the lesson list (with lock/done state for students), and the testimonia
 rows in the same panel as the overview, and manages gallery photos in the Photos section
 (upload / caption / reorder / delete). The same gallery shows on the public promo page.
 
+**Course detail — lesson list (teacher).** Each lesson row has an **Open / Closed** toggle (the
+release switch — §7), a small **⧉ duplicate** button, and delete. The course hero has a
+**Duplicate course** button next to Edit details / Delete. Students see a "Not open yet" lock on
+any closed lesson.
+
+**Teacher guide.** A teacher-only `#/guide` page (nav link "Guide") explaining the model and the
+non-obvious parts — class-vs-enrollment, open/close pacing, publish-vs-promote, duplication. Pure
+static help content; no data. Keep it in step with behaviour changes.
+
 **Lesson builder (teacher).** Google-Forms-style: an ordered list of blocks, an "Add part"
 palette, inline editing, reorder up/down, delete. Saving writes `content_json` via
 `PATCH /api/lessons/:id`.
@@ -514,7 +535,8 @@ code cannot exist without a class. To stop a student who has *already* registere
 their Access off in the table, not here.
 
 **Student lesson view.** Renders blocks in order; multiple choice gives instant auto-feedback;
-open answers and (phase 2) uploads are captured. "Mark lesson complete" unlocks the next lesson.
+open answers and (phase 2) uploads are captured. "Mark lesson complete" records progress (it no
+longer unlocks anything — the teacher's open/close switch controls what's available, §7).
 
 ---
 

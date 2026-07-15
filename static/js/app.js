@@ -446,6 +446,34 @@ const CourseView = {
       await API.del('/lessons/' + lesson.id);
       await this.load();
     },
+    /* Release or hold a lesson. Open = students can do it; closed = hidden from them. */
+    async toggleLessonOpen(lesson) {
+      const next = !lesson.is_open;
+      try {
+        await API.patch('/lessons/' + lesson.id, { is_open: next });
+        lesson.is_open = next;
+      } catch (err) {
+        this.error = err.message;
+      }
+    },
+    async duplicateLesson(lesson) {
+      try {
+        await API.post('/lessons/' + lesson.id + '/duplicate', {});
+        await this.load();
+      } catch (err) {
+        this.error = err.message;
+      }
+    },
+    async duplicateCourse() {
+      if (!confirm('Make a copy of this whole course (lessons, photos, testimonials)? '
+                 + 'The copy starts unpublished and all its lessons closed.')) return;
+      try {
+        const res = await API.post('/courses/' + this.course.id + '/duplicate', {});
+        go('/course/' + res.id);
+      } catch (err) {
+        this.error = err.message;
+      }
+    },
     async deleteCourse() {
       if (!confirm('Delete this whole course, its lessons and all answers?')) return;
       await API.del('/courses/' + this.course.id);
@@ -502,6 +530,7 @@ const CourseView = {
 
             <div v-if="teacher" class="row" style="margin-top:1rem">
               <button class="btn ghost sm shrink" @click="editing = !editing">Edit details</button>
+              <button class="btn ghost sm shrink" @click="duplicateCourse">Duplicate course</button>
               <button class="btn ghost sm shrink" @click="deleteCourse">Delete course</button>
             </div>
           </div>
@@ -601,11 +630,18 @@ const CourseView = {
               </div>
             </div>
             <span v-if="lesson.completed" class="pill ok">Done</span>
-            <span v-else-if="!lesson.unlocked" class="pill">🔒 Locked</span>
+            <span v-else-if="!teacher && !lesson.unlocked" class="pill">🔒 Not open yet</span>
+            <button v-if="teacher" class="btn sm" :class="lesson.is_open ? 'ok-outline' : 'danger'"
+                    @click="toggleLessonOpen(lesson)">
+              {{ lesson.is_open ? 'Open' : 'Closed' }}
+            </button>
             <button class="btn sm" :disabled="!lesson.unlocked && !teacher" @click="openLesson(lesson)">
               {{ teacher ? 'Edit' : (lesson.completed ? 'Review' : 'Start') }}
             </button>
-            <button v-if="teacher" class="icon-btn" @click="removeLesson(lesson)">&times;</button>
+            <button v-if="teacher" class="icon-btn" title="Duplicate lesson"
+                    @click="duplicateLesson(lesson)">⧉</button>
+            <button v-if="teacher" class="icon-btn" title="Delete lesson"
+                    @click="removeLesson(lesson)">&times;</button>
           </div>
           <p v-if="!lessons.length" class="empty">No lessons yet.</p>
         </div>
@@ -1301,6 +1337,150 @@ const ResponsesView = {
     </div>`,
 };
 
+/* ------------------------------------------------------------------ teacher guide */
+
+/* Teacher-only help page. Explains the model and the parts that aren't obvious. */
+const GuideView = {
+  template: `
+    <div class="page guide">
+      <div class="page-head">
+        <div>
+          <h1>Teacher guide</h1>
+          <p class="sub">How the system fits together — and the bits that catch people out.</p>
+        </div>
+      </div>
+
+      <div class="card pad" style="margin-bottom:1.25rem">
+        <h2>The big picture</h2>
+        <p>Four things connect up:</p>
+        <ul class="guide-list">
+          <li><b>Levels</b> — the broad groups: Adult, Kids Level 1, Kids Level 2, Home Class.</li>
+          <li><b>Classes</b> — a named group of students (e.g. <i>Sunflowers</i>) that belongs to
+            exactly one level.</li>
+          <li><b>Courses</b> — the teaching material, made of <b>lessons</b>. A course belongs to a level.</li>
+          <li><b>Students</b> — join a class using a registration code, and are given access to
+            courses one by one.</li>
+        </ul>
+        <p class="muted small" style="margin-bottom:0">A student's level is decided by their class.
+          You never set a student's level directly — you put them in a class, and the class carries
+          the level.</p>
+      </div>
+
+      <div class="section-head"><h2>Classes &amp; registration codes</h2></div>
+      <div class="card pad" style="margin-bottom:1.25rem">
+        <p>Open <b>Students → Classes &amp; codes</b> to make a class (name + level) and then a
+          <b>registration code</b> for it. The code is the class name plus a few random characters,
+          e.g. <span class="code-chip">SUNFLOWERS-7K2Q</span>. Give it to a student; when they
+          register with it they join that class (and so sit at its level).</p>
+        <div class="guide-note">
+          <b>Good to know</b>
+          <ul class="guide-list" style="margin-bottom:0">
+            <li>The codes window lists <b>only codes that haven't been used yet</b>. Once a student
+              registers with a code it drops off the list — it has done its job.</li>
+            <li>Make a code <b>single-use</b> (max uses = 1) for one student, or leave it open for a
+              whole cohort.</li>
+            <li>To stop someone who has <b>already</b> registered, don't fiddle with codes — turn
+              their <b>Access</b> off in the student table (see below).</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section-head"><h2>Getting a student into a course</h2></div>
+      <div class="card pad" style="margin-bottom:1.25rem">
+        <p>This is the step people miss most often, so it's worth being clear:</p>
+        <div class="guide-note warn">
+          <b>Being in a class is NOT the same as having access to a course.</b>
+          <p style="margin:.4rem 0 0">A class sets a student's level and grouping. It does <b>not</b>
+            give them any course. To let a student into a course you must <b>enrol</b> them:
+            in the <b>Students</b> table, tick that course's checkbox on the student's row.
+            Until you do, they'll sign in and see nothing.</p>
+        </div>
+        <p style="margin-bottom:0">The Students table shows <b>one level at a time</b> (the tabs
+          across the top), and only that level's courses appear as tick-columns — that's what keeps
+          the table from getting too wide. Use the <b>Class</b> dropdown on a row to move a student
+          to a different class (which also changes their level); their course access is left as-is.</p>
+      </div>
+
+      <div class="section-head"><h2>Opening &amp; closing lessons (pacing)</h2></div>
+      <div class="card pad" style="margin-bottom:1.25rem">
+        <p>Inside a course, each lesson has an <b>Open / Closed</b> switch (on the lesson row).
+          <b>Students only see lessons you've opened.</b></p>
+        <div class="guide-note">
+          <ul class="guide-list" style="margin:0">
+            <li><b>Every lesson starts Closed.</b> Newly added lessons — and, after this update, all
+              your existing ones — are closed until you open them. So students can't race ahead:
+              they only ever see what you've released.</li>
+            <li>There's <b>no fixed order</b> any more. You decide what's open; open lessons can be
+              done in any order. Open them one per week, or all at once — your call.</li>
+            <li>A student clicking <b>Mark lesson complete</b> now only records their progress
+              (the done/total on their dashboard). It no longer unlocks anything — you do that.</li>
+          </ul>
+        </div>
+        <p style="margin-bottom:0"><b>Preview</b> a lesson (from the builder) to see exactly what a
+          student sees; a "Back to edit" bar takes you straight back.</p>
+      </div>
+
+      <div class="section-head"><h2>Turning a student's access on/off</h2></div>
+      <div class="card pad" style="margin-bottom:1.25rem">
+        <p style="margin-bottom:0">Each student row has an <b>Access</b> button. Turning access
+          <b>off</b> stops that student signing in, but keeps their account, answers and progress —
+          it's fully reversible, so it's the right tool for a student who has left or paused.
+          A disabled student shows greyed-out with an <span class="pill red">Off</span> tag.</p>
+      </div>
+
+      <div class="section-head"><h2>Publishing vs promoting a course</h2></div>
+      <div class="card pad" style="margin-bottom:1.25rem">
+        <p>A course has two independent switches, in <b>Edit details</b>:</p>
+        <ul class="guide-list">
+          <li><b>Published</b> — enrolled students can open the course. Leave it off while you're
+            still building.</li>
+          <li><b>Promote</b> — the course's info page (overview, goals, photos, lesson list) is shown
+            to <b>website visitors who aren't logged in</b>, as marketing. It never exposes the actual
+            lesson content or any student data.</li>
+        </ul>
+        <p class="muted small" style="margin-bottom:0">They're separate on purpose: you can promote a
+          course as "coming soon" before it's published, or run a published course that isn't
+          advertised publicly.</p>
+      </div>
+
+      <div class="section-head"><h2>Same course for two classes? Duplicate it</h2></div>
+      <div class="card pad" style="margin-bottom:1.25rem">
+        <p>Open/close is set per course, so if two classes take the same material at different speeds,
+          make each its own copy: on the course page use <b>Duplicate course</b> (or the small
+          <b>⧉</b> on a lesson row to copy a single lesson).</p>
+        <div class="guide-note">
+          <p style="margin:0">A duplicated course comes through with all its lessons, photos and
+            testimonials, but starts <b>unpublished</b>, <b>not promoted</b>, and with <b>every lesson
+            closed</b>. It carries <b>no</b> student data — no enrolments, answers or progress. Rename
+            it, enrol that class, and open lessons at that class's pace.</p>
+        </div>
+      </div>
+
+      <div class="section-head"><h2>Building lessons</h2></div>
+      <div class="card pad" style="margin-bottom:1.25rem">
+        <p>The lesson builder is a list of <b>parts</b> you add from the palette: titles, text,
+          images, video, audio, slide embeds, links, prompts, and quizzes (multiple-choice or open
+          answer). A few notes:</p>
+        <ul class="guide-list" style="margin-bottom:0">
+          <li><b>Video</b> takes either a YouTube/Vimeo <i>link</i> (pasted normally — it becomes an
+            inline player) or an uploaded video file. <b>Audio</b> is an uploaded file.</li>
+          <li>Editing a quiz after students have answered is safe — answers are tied to the question,
+            not its position, so you can reorder and edit freely. If you delete an option someone
+            chose, their answer just shows as "(removed option)".</li>
+          <li>Quizzes aren't graded; they're for collecting and sharing answers.</li>
+        </ul>
+      </div>
+
+      <div class="section-head"><h2>Seeing answers &amp; progress</h2></div>
+      <div class="card pad">
+        <p style="margin-bottom:0">From a course, <b>View student responses</b> lists every question
+          with how many have answered, and opens an answer-sharing view per question. A student's row
+          in the Students table shows their lessons-completed count, and clicking through shows their
+          answers. Progress is simply completed lessons ÷ total lessons.</p>
+      </div>
+    </div>`,
+};
+
 /* ------------------------------------------------------------------ public (no login) */
 
 /* What a website visitor sees: promoted courses, for marketing. Read-only, no lesson
@@ -1457,7 +1637,7 @@ const app = createApp({
       const views = {
         home: 'home-view', courses: 'courses-view', course: 'course-view',
         lesson: 'lesson-view', builder: 'builder-view', students: 'students-view',
-        responses: 'responses-view',
+        responses: 'responses-view', guide: 'guide-view',
       };
       return views[route.name] || 'home-view';
     },
@@ -1531,6 +1711,8 @@ const app = createApp({
             <a href="#/courses" :class="{ on: on('courses') || on('course') }">Courses</a>
             <a v-if="user.role === 'teacher'" href="#/students"
                :class="{ on: on('students') }">Students</a>
+            <a v-if="user.role === 'teacher'" href="#/guide"
+               :class="{ on: on('guide') }">Guide</a>
             <span class="whoami">{{ user.name }}</span>
             <a href="#" @click.prevent="signOut">Sign out</a>
           </nav>
@@ -1550,6 +1732,7 @@ app.component('lesson-view', LessonView);
 app.component('builder-view', BuilderView);
 app.component('students-view', StudentsView);
 app.component('responses-view', ResponsesView);
+app.component('guide-view', GuideView);
 app.component('public-home', PublicHome);
 app.component('public-course', PublicCourse);
 app.component('course-card', CourseCard);

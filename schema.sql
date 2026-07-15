@@ -67,6 +67,7 @@ CREATE TABLE IF NOT EXISTS lessons (
   kind         text NOT NULL,
   title        text NOT NULL,
   sort_order   integer NOT NULL,
+  is_open      boolean NOT NULL DEFAULT false,   -- teacher releases lessons; closed until opened
   content_json jsonb NOT NULL DEFAULT '{"blocks": []}'::jsonb,
   created_at   timestamptz NOT NULL DEFAULT now(),
   updated_at   timestamptz NOT NULL DEFAULT now()
@@ -119,6 +120,7 @@ CREATE TABLE IF NOT EXISTS lesson_completions (
 
 -- Migrations for databases created before classes/goals existed. Idempotent, so a
 -- re-run of init_db.py brings an existing Neon database up to date in place.
+ALTER TABLE lessons      ADD COLUMN IF NOT EXISTS is_open        boolean NOT NULL DEFAULT false;
 ALTER TABLE users        ADD COLUMN IF NOT EXISTS active         boolean NOT NULL DEFAULT true;
 ALTER TABLE courses      ADD COLUMN IF NOT EXISTS goals          jsonb NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE courses      ADD COLUMN IF NOT EXISTS promoted       boolean NOT NULL DEFAULT false;
