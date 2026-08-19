@@ -18,8 +18,8 @@ from psycopg.types.json import Jsonb
 from werkzeug.security import generate_password_hash
 
 TEACHER_ID = "u_teacher"
-STARTER_CLASS = ("cls_sunflowers", "Sunflowers", "cat_kids1")
-STARTER_CODE = "SUNFLOWERS-0001"
+STARTER_CLASS = ("cls_general", "General", "cat_culture")
+STARTER_CODE = "GENERAL-0001"
 
 
 def main():
@@ -32,7 +32,7 @@ def main():
             email = os.environ["ADMIN_EMAIL"].lower()
             cur.execute(
                 """INSERT INTO users (id, role, name, email, password_hash)
-                   VALUES (%s, 'teacher', 'Mama Lucy', %s, %s)
+                   VALUES (%s, 'teacher', 'Teacher', %s, %s)
                    ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email,
                                                   password_hash = EXCLUDED.password_hash""",
                 (TEACHER_ID, email, generate_password_hash(os.environ["ADMIN_PASSWORD"])),
@@ -76,7 +76,7 @@ def seed_demo(cur):
     course_id = "c_demo"
     cur.execute(
         """INSERT INTO courses (id, title, category_id, overview, goals, published, sort_order)
-           VALUES (%s, %s, 'cat_kids1', %s, %s, true, 0)
+           VALUES (%s, %s, 'cat_culture', %s, %s, true, 0)
            ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title,
                                           overview = EXCLUDED.overview,
                                           goals = EXCLUDED.goals,

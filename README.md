@@ -1,7 +1,8 @@
-# Mama Lucy's English Explorers
+# Digital Learners
 
 A private, invite-only LMS for one teacher. Flask + Vue (via CDN, no build step),
 Postgres on Neon, media on S3. Architecture and data model: see [CLAUDE.md](CLAUDE.md).
+
 
 ## Run it locally
 
@@ -25,13 +26,13 @@ seeds upsert. Drop `--demo` to skip the sample course and student.
 | Who | Sign in with |
 |-----|--------------|
 | Teacher (owner) | `ADMIN_EMAIL` / `ADMIN_PASSWORD` from `.env` |
-| Demo student | `student@example.com` / `student123` (class **Sunflowers**) |
-| New students | register with the code `SUNFLOWERS-0001` |
+| Demo student | `student@example.com` / `student123` (class **General**) |
+| New students | register with the code `GENERAL-0001` |
 
-Registration codes belong to a **class** (a named group at one level — Adult, Kids Level 1,
-Kids Level 2), and the class name is the code's prefix. Whoever registers with
-`SUNFLOWERS-0001` joins Sunflowers, and so sits at Kids Level 1. The teacher mints new codes
-and classes from **Students → Classes & codes**.
+Registration codes belong to a **class** (a named group at one level — currently just
+Culture Studies), and the class name is the code's prefix. Whoever registers with
+`GENERAL-0001` joins General, and so sits at the Culture Studies level. The teacher mints
+new codes and classes from **Students → Classes & codes**.
 
 ## The files
 

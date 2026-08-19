@@ -1,4 +1,4 @@
-/* Mama Lucy's English Explorers — the whole client.
+/* Culture Studies — the whole client.
    Hash routing, no build step. Server owns access control; this is presentation. */
 
 const { createApp, reactive, computed } = Vue;
@@ -50,7 +50,7 @@ const AuthView = {
       <div>
         <div class="auth-logo">
           <img src="/static/img/logo.png" alt="">
-          <h1>Mama Lucy's English Explorers</h1>
+          <h1>Culture Studies</h1>
           <p>Sign in to keep exploring.</p>
         </div>
         <div class="card">
@@ -1231,7 +1231,7 @@ const StudentsView = {
             <form class="row" @submit.prevent="createClass">
               <div class="field" style="margin:0">
                 <label>Name</label>
-                <input type="text" v-model="newClass.name" placeholder="Sunflowers" required>
+                <input type="text" v-model="newClass.name" placeholder="General" required>
               </div>
               <div class="field" style="margin:0">
                 <label>Level</label>
@@ -1354,8 +1354,8 @@ const GuideView = {
         <h2>The big picture</h2>
         <p>Four things connect up:</p>
         <ul class="guide-list">
-          <li><b>Levels</b> — the broad groups: Adult, Kids Level 1, Kids Level 2, Home Class.</li>
-          <li><b>Classes</b> — a named group of students (e.g. <i>Sunflowers</i>) that belongs to
+          <li><b>Levels</b> — the broad groups courses sit under (currently just Culture Studies).</li>
+          <li><b>Classes</b> — a named group of students (e.g. <i>General</i>) that belongs to
             exactly one level.</li>
           <li><b>Courses</b> — the teaching material, made of <b>lessons</b>. A course belongs to a level.</li>
           <li><b>Students</b> — join a class using a registration code, and are given access to
@@ -1370,7 +1370,7 @@ const GuideView = {
       <div class="card pad" style="margin-bottom:1.25rem">
         <p>Open <b>Students → Classes &amp; codes</b> to make a class (name + level) and then a
           <b>registration code</b> for it. The code is the class name plus a few random characters,
-          e.g. <span class="code-chip">SUNFLOWERS-7K2Q</span>. Give it to a student; when they
+          e.g. <span class="code-chip">GENERAL-7K2Q</span>. Give it to a student; when they
           register with it they join that class (and so sit at its level).</p>
         <div class="guide-note">
           <b>Good to know</b>
@@ -1501,8 +1501,8 @@ const PublicHome = {
       <div class="promo-hero card">
         <div class="stripes"><i></i><i></i><i></i></div>
         <div class="pad">
-          <h1>Learn English with Mama Lucy</h1>
-          <p class="sub">Friendly, step-by-step lessons for adults and children. Browse our
+          <h1>Culture Studies</h1>
+          <p class="sub">Short online courses exploring culture. Browse our
             courses below, then sign in to start learning.</p>
           <a class="btn" href="#/signin">Sign in or register</a>
         </div>
@@ -1680,8 +1680,8 @@ const app = createApp({
           <a class="lockup" href="#/">
             <img src="/static/img/logo.png" alt="">
             <span>
-              <b>Mama Lucy's</b>
-              <span>English Explorers</span>
+              <b>Culture</b>
+              <span>Studies</span>
             </span>
           </a>
           <nav class="nav">
@@ -1702,8 +1702,8 @@ const app = createApp({
           <a class="lockup" href="#/home">
             <img src="/static/img/logo.png" alt="">
             <span>
-              <b>Mama Lucy's</b>
-              <span>English Explorers</span>
+              <b>Culture</b>
+              <span>Studies</span>
             </span>
           </a>
           <nav class="nav">

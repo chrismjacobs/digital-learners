@@ -1172,7 +1172,7 @@ def list_invite_codes():
 
 
 def code_slug(name):
-    """Sunflowers -> SUNFLOWERS, Kids A/B -> KIDSAB. Letters and digits only, so the
+    """General -> GENERAL, Group A/B -> GROUPAB. Letters and digits only, so the
     code stays easy to read out over the phone."""
     slug = re.sub(r"[^A-Za-z0-9]", "", name).upper()
     return slug[:16] or "CLASS"

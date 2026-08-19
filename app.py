@@ -1,4 +1,4 @@
-"""Mama Lucy's English Explorers — Flask entrypoint.
+"""Culture Studies — Flask entrypoint.
 
 Local:  python app.py
 Render: gunicorn app:app

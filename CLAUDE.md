@@ -1,13 +1,12 @@
-# English Explorers LMS — Build Guide (CLAUDE.md)
+# Digital Learners LMS — Build Guide (CLAUDE.md)
 
 Orientation file for Claude Code. Read this first before making changes.
-
 
 ---
 
 ## 1. What this is
 
-A private, invite-only learning platform for **one teacher** running online English
+A private, invite-only learning platform for **one teacher** running online
 lessons. Students register with a teacher-issued code, get assigned to courses, work
 through gated lessons, and submit answers. The teacher builds lessons visually,
 manages students, and reviews responses.
@@ -20,11 +19,12 @@ moving parts over fewer clicks.
 **Single owner.** There is one teacher/owner account. Everyone else is a student.
 Do not build multi-teacher features unless asked.
 
-The clickable prototype (`english-explorers-lms.jsx`) is the **UI source of truth** for
-screens and flows. This document is the source of truth for data, auth, storage, and
-architecture. Where they disagree, ask.
+Title: Culture Studies
 
-Title: Mama Lucy's English Explorers
+**Important Note: This was original made for an English private tutor. It is now being reworked for another teacher at a university who need some online lesson content for short courses. Adults is Kids is no longer the group categories. Currently there is one group. Culture Studies, so that is start. Can wipe all content for the English teacher, and make a new database (neon address is updated) and a new s3 connection (culture-lms), new app title and logo - Course content will be built manually
+
+new git repo:
+git@github.com:chrismjacobs/digital-learners.git
 
 ---
 

@@ -1,4 +1,4 @@
--- Mama Lucy's English Explorers — schema (see CLAUDE.md §4)
+-- Culture Studies — schema (see CLAUDE.md §4)
 -- Safe to run repeatedly.
 
 CREATE TABLE IF NOT EXISTS users (
@@ -138,8 +138,5 @@ CREATE INDEX IF NOT EXISTS responses_lesson_idx         ON responses (lesson_id)
 CREATE INDEX IF NOT EXISTS completions_user_idx         ON lesson_completions (user_id);
 
 INSERT INTO course_categories (id, name, sort_order) VALUES
-  ('cat_adult', 'Adult',        0),
-  ('cat_kids1', 'Kids Level 1', 1),
-  ('cat_kids2', 'Kids Level 2', 2),
-  ('cat_home',  'Home Class',   3)
+  ('cat_culture', 'Culture Studies', 0)
 ON CONFLICT (id) DO NOTHING;
