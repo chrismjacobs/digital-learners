@@ -889,6 +889,66 @@ def upload_media():
     return jsonify(key=key, url=storage.signed_url(key))
 
 
+@api.post("/my/uploads")
+@login_required
+def upload_my_media():
+    """A student's answer to an `upload` block: audio or a photo. Stored under a key keyed
+    to (user, block) — the stable id an `upload` block never loses (CLAUDE.md §3B) — so a
+    resubmit overwrites the same response row and, once uploaded, the same-shaped file."""
+    user = current_user()
+    file = request.files.get("file")
+    lesson_id = request.form.get("lesson_id")
+    block_id = request.form.get("block_id")
+    if file is None or not lesson_id or not block_id:
+        raise Invalid("file, lesson_id and block_id are all required.")
+
+    lesson = db.one("SELECT * FROM lessons WHERE id = %s", (lesson_id,))
+    if lesson is None:
+        return jsonify(error="No such lesson."), 404
+    if not can_view_course(lesson["course_id"]):
+        return jsonify(error="You don't have access to this course."), 403
+    if not lesson_lock_state(user, lesson["course_id"])[lesson_id]["unlocked"]:
+        return jsonify(error="This lesson isn't open yet."), 403
+
+    block = next((b for b in blocks_of(lesson) if b.get("id") == block_id), None)
+    if block is None or block.get("type") != "upload":
+        raise Invalid("That upload prompt is no longer part of this lesson.")
+
+    accept = [k for k in (block.get("accept") or ["audio", "image"]) if k in UPLOAD_KINDS]
+    content_type = (file.mimetype or "").lower()
+    kind = next((k for k in accept if content_type in UPLOAD_KINDS[k][0]), None)
+    if kind is None:
+        raise Invalid("That file type isn't accepted here.")
+    allowed_types, cap_mb = UPLOAD_KINDS[kind]
+
+    ext = storage.extension_for(file.filename, file.mimetype)
+    key = f"uploads/{user['id']}/{block_id}.{ext}"
+
+    existing = db.one(
+        "SELECT media_key FROM responses WHERE user_id = %s AND block_id = %s",
+        (user["id"], block_id),
+    )
+    try:
+        storage.put(file, key, allowed_types, max_bytes=cap_mb * 1024 * 1024)
+    except ValueError as exc:
+        raise Invalid(str(exc))
+    if existing and existing["media_key"] and existing["media_key"] != key:
+        storage.delete(existing["media_key"])  # extension changed; drop the old object
+
+    db.execute(
+        """INSERT INTO responses (id, user_id, lesson_id, block_id, kind, media_key, status, updated_at)
+           VALUES (%s, %s, %s, %s, 'upload', %s, 'submitted', now())
+           ON CONFLICT (user_id, block_id)
+           DO UPDATE SET media_key = EXCLUDED.media_key,
+                         lesson_id = EXCLUDED.lesson_id,
+                         kind      = 'upload',
+                         status    = 'submitted',
+                         updated_at = now()""",
+        (db.new_id("r"), user["id"], lesson_id, block_id, key),
+    )
+    return jsonify(key=key, url=storage.signed_url(key)), 201
+
+
 # ---------------------------------------------------------------- responses & completion
 
 @api.post("/lessons/<lesson_id>/responses")

@@ -220,7 +220,7 @@ CREATE TABLE responses (
   kind        text NOT NULL,       -- "quiz_mc" | "quiz_open" | "upload"
   option_id   text,                -- multiple choice: the chosen option's stable id
   value_text  text,                -- open answer text
-  media_key   text,                -- S3 key for uploaded audio/photo (phase 2)
+  media_key   text,                -- S3 key for uploaded audio/photo (upload blocks)
   -- Present but unused today. Lets grading be added later with zero migration:
   score       real,
   feedback    text,
@@ -319,7 +319,7 @@ by the database instead of silently stored.
 | `prompt`    | `text` (thought / exercise, not collected)                    | no          |
 | `quiz_mc`   | `question`, `options[{id,text}]`, `correctId`, `feedbackCorrect`, `feedbackWrong` | yes |
 | `quiz_open` | `question`                                                    | yes         |
-| `upload`    | `prompt`, `accept[]` — **phase 2**, audio/photo to S3         | yes         |
+| `upload`    | `prompt`, `accept[]` — audio/photo to S3                      | yes         |
 
 **Uploaded media vs. links (`key` vs. `url`).** A block that carries a **`key`** is a file in
 S3 (image, audio, or an uploaded video); its `url` is a signed link **derived on read** and
@@ -446,7 +446,11 @@ GET  /api/courses/:id                          detail: overview, testimonials, l
 GET  /api/lessons/:id                          content — 403 if lesson is locked for this user
 POST /api/lessons/:id/responses                {block_id, kind, option_id?, value_text?}  upsert
 POST /api/lessons/:id/complete                 marks lesson_completions
-POST /api/my/uploads                           (multipart) student audio/photo — phase 2
+POST /api/my/uploads                           (multipart: file, lesson_id, block_id) upsert
+                                               a response for an `upload` block; returns
+                                               {key, url}. Rejects a lesson that's locked,
+                                               a block that isn't `type: upload`, or a file
+                                               type outside the block's `accept[]`.
 ```
 
 ---
@@ -535,8 +539,8 @@ code cannot exist without a class. To stop a student who has *already* registere
 their Access off in the table, not here.
 
 **Student lesson view.** Renders blocks in order; multiple choice gives instant auto-feedback;
-open answers and (phase 2) uploads are captured. "Mark lesson complete" records progress (it no
-longer unlocks anything — the teacher's open/close switch controls what's available, §7).
+open answers and uploads (audio/photo) are captured. "Mark lesson complete" records progress
+(it no longer unlocks anything — the teacher's open/close switch controls what's available, §7).
 
 ---
 
@@ -549,7 +553,8 @@ logo/logo.png
 courses/{course_id}/title-card.{ext}
 courses/{course_id}/gallery/{image_id}.{ext}   # extra promo photos (course_images)
 lessons/{lesson_id}/{block_id}.{ext}      # content image / audio / video
-uploads/{user_id}/{response_id}.{ext}     # student audio/photo (phase 2)
+uploads/{user_id}/{block_id}.{ext}        # student audio/photo; keyed to the block, so a
+                                          # resubmit overwrites rather than orphaning a file
 ```
 
 Serve via time-limited signed URLs. Validate content type and cap size on upload; the caps
@@ -587,7 +592,7 @@ only if proxied uploads actually become a problem.
 3. **Student experience.** Enrollment-gated home, sequential lesson gating, answer capture
    for `quiz_mc` / `quiz_open`, lesson completion.
 4. **Teacher dashboard.** Student table + filters, course-access assignment, response views.
-5. **Phase 2.** Student media uploads (`upload` block, audio/photo to S3). Then, only if
+5. **Student media uploads** (`upload` block, audio/photo to S3) — done. Beyond that, only if
    asked: live-session attendance, quiz grading (columns already exist), reusable quiz bank.
 
 The hard, do-them-carefully parts are **auth, file uploads, and server-side access

@@ -724,6 +724,10 @@ const LessonView = {
         this.error = err.message;
       }
     },
+    onUploaded(answer) {
+      /* /api/my/uploads already wrote the response row; just reflect it locally. */
+      this.answers[answer.block_id] = answer;
+    },
     async complete() {
       this.saving = true;
       try {
@@ -760,8 +764,8 @@ const LessonView = {
         </div>
 
         <block-view v-for="block in lesson.blocks" :key="block.id"
-                    :block="block" :answer="answers[block.id]"
-                    @answer="saveAnswer"></block-view>
+                    :block="block" :answer="answers[block.id]" :lesson-id="lesson.id"
+                    @answer="saveAnswer" @uploaded="onUploaded"></block-view>
 
         <p v-if="!lesson.blocks.length" class="empty card">This lesson is empty.</p>
 
@@ -1264,6 +1268,9 @@ const ResponsesView = {
         this.open = null;
       }
     },
+    isAudioUrl(url) {
+      return /\.(mp3|wav|m4a|aac|ogg|webm|opus)(\?|$)/i.test(url || '');
+    },
   },
   async created() {
     try {
@@ -1323,6 +1330,11 @@ const ResponsesView = {
                         <span class="pill" :class="a.correct ? 'ok' : 'red'">
                           {{ a.correct ? 'Correct' : 'Wrong' }}
                         </span>
+                      </span>
+                      <span v-else-if="a.media_url">
+                        <audio v-if="isAudioUrl(a.media_url)" controls preload="metadata"
+                               :src="a.media_url" style="width:220px;vertical-align:middle"></audio>
+                        <a v-else :href="a.media_url" target="_blank" rel="noopener">View photo &rarr;</a>
                       </span>
                       <span v-else style="white-space:pre-wrap">{{ a.value_text }}</span>
                     </td>

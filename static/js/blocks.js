@@ -40,18 +40,24 @@ window.embedUrl = function (url) {
 /* ------------------------------------------------------------------ renderer */
 
 window.BlockView = {
-  props: ['block', 'answer'],
-  emits: ['answer'],
+  props: ['block', 'answer', 'lessonId'],
+  emits: ['answer', 'uploaded'],
   data() {
     return {
       picked: this.answer ? this.answer.option_id : null,
       draft: this.answer ? (this.answer.value_text || '') : '',
       savedAt: 0,
+      uploading: false,
+      uploadError: '',
     };
   },
   computed: {
     correct() { return this.picked && this.picked === this.block.correctId; },
     dirty() { return this.draft.trim() !== ((this.answer && this.answer.value_text) || ''); },
+    acceptAttr() {
+      const map = { image: 'image/*', audio: 'audio/*' };
+      return (this.block.accept || ['audio', 'image']).map((k) => map[k] || '').join(',');
+    },
   },
   methods: {
     embedUrl(url) { return window.embedUrl(url); },
@@ -67,6 +73,28 @@ window.BlockView = {
     optionClass(option) {
       if (this.picked !== option.id) return '';
       return this.correct ? 'picked right' : 'picked wrong';
+    },
+    isAudioUrl(url) {
+      return /\.(mp3|wav|m4a|aac|ogg|webm|opus)(\?|$)/i.test(url || '');
+    },
+    async uploadFile(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      this.uploading = true;
+      this.uploadError = '';
+      try {
+        const form = new FormData();
+        form.append('file', file);
+        form.append('lesson_id', this.lessonId);
+        form.append('block_id', this.block.id);
+        const res = await API.upload('/my/uploads', form);
+        this.$emit('uploaded', { block_id: this.block.id, kind: 'upload', media_url: res.url });
+      } catch (err) {
+        this.uploadError = err.message;
+      } finally {
+        this.uploading = false;
+        event.target.value = '';
+      }
     },
   },
   template: `
@@ -137,8 +165,17 @@ window.BlockView = {
 
       <div v-else-if="block.type === 'upload'" class="quiz">
         <div class="q">{{ block.prompt }}</div>
-        <p class="muted small" style="margin:0">
-          Uploads are coming soon — for now, bring this to your next lesson.
+        <div v-if="answer && answer.media_url" style="margin-bottom:.6rem">
+          <audio v-if="isAudioUrl(answer.media_url)" controls preload="metadata"
+                 :src="answer.media_url" style="width:100%"></audio>
+          <img v-else :src="answer.media_url" style="max-width:280px;border-radius:8px;display:block">
+          <p class="small muted" style="margin:.4rem 0 0">&check; Uploaded</p>
+        </div>
+        <input type="file" :accept="acceptAttr" @change="uploadFile" :disabled="uploading">
+        <p v-if="uploading" class="small muted" style="margin:.4rem 0 0">Uploading&hellip;</p>
+        <p v-if="uploadError" class="small" style="color:var(--red);margin:.4rem 0 0">{{ uploadError }}</p>
+        <p v-if="answer && answer.media_url" class="muted small" style="margin:.4rem 0 0">
+          Choosing a new file replaces your last upload.
         </p>
       </div>
     </div>`,
@@ -187,6 +224,11 @@ window.BlockEditor = {
       /* Back to an empty block — for video this returns it to link (embed) mode. */
       this.block.key = '';
       this.block.url = '';
+    },
+    toggleAccept(kind) {
+      this.block.accept = this.block.accept.includes(kind)
+        ? this.block.accept.filter((k) => k !== kind)
+        : [...this.block.accept, kind];
     },
   },
   template: `
@@ -305,10 +347,24 @@ window.BlockEditor = {
       </div>
 
       <div v-else-if="block.type === 'upload'">
-        <label>Prompt</label>
-        <input type="text" v-model="block.prompt" placeholder="Record yourself saying the colours.">
-        <p class="small muted" style="margin:.5rem 0 0">
-          Students will be able to upload audio or a photo here (coming soon).
+        <div class="field">
+          <label>Prompt</label>
+          <input type="text" v-model="block.prompt" placeholder="Record yourself saying the colours.">
+        </div>
+        <label>Accepts</label>
+        <div class="row" style="margin-bottom:.2rem">
+          <label class="small" style="display:flex;align-items:center;gap:.35rem">
+            <input type="checkbox" :checked="block.accept.includes('audio')" @change="toggleAccept('audio')">
+            Audio
+          </label>
+          <label class="small" style="display:flex;align-items:center;gap:.35rem">
+            <input type="checkbox" :checked="block.accept.includes('image')" @change="toggleAccept('image')">
+            Photo
+          </label>
+        </div>
+        <p class="small muted" style="margin:.3rem 0 0">
+          Students record or pick a file right on this block; their upload replaces any
+          earlier one for this question.
         </p>
       </div>
     </div>`,
