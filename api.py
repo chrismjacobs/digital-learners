@@ -1372,3 +1372,59 @@ def course_responses(course_id):
                 "lesson_code": lesson["code"], "quizzes": quizzes,
             })
     return jsonify(lessons=out)
+
+
+@api.get("/courses/<course_id>/responses/grid")
+@owner_required
+def course_responses_grid(course_id):
+    """Every enrolled student x every question in the course, in one grid — an at-a-glance
+    companion to the per-question answer-sharing view above. Same answer data, just laid out
+    so the instructor can scan the whole class instead of opening one question at a time."""
+    lessons = db.query(
+        "SELECT * FROM lessons WHERE course_id = %s ORDER BY sort_order, code",
+        (course_id,),
+    )
+    questions = []
+    option_texts = {}   # block_id -> {option_id: text}
+    correct_ids = {}    # block_id -> correctId
+    for lesson in lessons:
+        for b in blocks_of(lesson):
+            if b.get("type") not in INTERACTIVE_TYPES:
+                continue
+            questions.append({
+                "block_id": b["id"], "type": b["type"],
+                "lesson_id": lesson["id"], "lesson_code": lesson["code"],
+                "question": b.get("question") or b.get("prompt") or "(untitled)",
+            })
+            if b.get("type") == "quiz_mc":
+                option_texts[b["id"]] = {o["id"]: o["text"] for o in (b.get("options") or [])}
+                correct_ids[b["id"]] = b.get("correctId")
+
+    students = db.query(
+        """SELECT u.id, u.name FROM enrollments e JOIN users u ON u.id = e.user_id
+           WHERE e.course_id = %s AND u.role = 'student' ORDER BY u.name""",
+        (course_id,),
+    )
+
+    answers = {}
+    for r in db.query(
+        """SELECT r.user_id, r.block_id, r.option_id, r.value_text, r.media_key
+           FROM responses r JOIN lessons l ON l.id = r.lesson_id
+           WHERE l.course_id = %s""",
+        (course_id,),
+    ):
+        option_text = None
+        if r["option_id"]:
+            option_text = option_texts.get(r["block_id"], {}).get(r["option_id"], "(removed option)")
+        answers.setdefault(r["user_id"], {})[r["block_id"]] = {
+            "option_text": option_text,
+            "correct": (r["option_id"] == correct_ids.get(r["block_id"])) if r["option_id"] else None,
+            "value_text": r["value_text"],
+            "media_url": storage.signed_url(r["media_key"]),
+        }
+
+    return jsonify(
+        questions=questions,
+        students=[{"id": s["id"], "name": s["name"]} for s in students],
+        answers=answers,
+    )

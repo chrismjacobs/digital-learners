@@ -328,6 +328,14 @@ tbody tr:hover { background: var(--paper); }
 .assign-table tr.disabled td:not(.sticky) { opacity: .5; }
 .assign-table tr.disabled td.sticky b { color: var(--muted); }
 .assign-table select { padding: .3rem .4rem; font-size: .85rem; }
+
+/* Instructor's answers-at-a-glance grid: one row per student, one column per question. */
+.responses-grid th.course-col { max-width: 160px; }
+.responses-grid td { max-width: 160px; }
+.responses-grid .cell-text {
+  display: inline-block; max-width: 150px; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; vertical-align: middle;
+}
 .code-chip {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
   font-size: .8rem; background: var(--paper); border: 1px solid var(--line);

@@ -1254,9 +1254,40 @@ const StudentsView = {
 const ResponsesView = {
   props: ['user'],
   data() {
-    return { lessons: [], loading: true, open: null, detail: null, error: '' };
+    return {
+      mode: 'grid',
+      grid: null, gridLoading: true,
+      lessons: [], lessonsLoading: false, lessonsLoaded: false,
+      open: null, detail: null, error: '',
+    };
   },
   methods: {
+    async loadGrid() {
+      this.gridLoading = true;
+      try {
+        this.grid = await API.get('/courses/' + route.id + '/responses/grid');
+      } catch (err) {
+        this.error = err.message;
+      } finally {
+        this.gridLoading = false;
+      }
+    },
+    async loadLessons() {
+      if (this.lessonsLoaded) return;
+      this.lessonsLoading = true;
+      try {
+        this.lessons = (await API.get('/courses/' + route.id + '/responses')).lessons;
+        this.lessonsLoaded = true;
+      } catch (err) {
+        this.error = err.message;
+      } finally {
+        this.lessonsLoading = false;
+      }
+    },
+    switchMode(m) {
+      this.mode = m;
+      if (m === 'question') this.loadLessons();
+    },
     async openQuiz(lessonId, quiz) {
       this.open = quiz.block_id;
       this.detail = null;
@@ -1271,16 +1302,11 @@ const ResponsesView = {
     isAudioUrl(url) {
       return /\.(mp3|wav|m4a|aac|ogg|webm|opus)(\?|$)/i.test(url || '');
     },
+    cell(studentId, blockId) {
+      return (this.grid.answers[studentId] || {})[blockId] || null;
+    },
   },
-  async created() {
-    try {
-      this.lessons = (await API.get('/courses/' + route.id + '/responses')).lessons;
-    } catch (err) {
-      this.error = err.message;
-    } finally {
-      this.loading = false;
-    }
-  },
+  created() { this.loadGrid(); },
   template: `
     <div class="page">
       <div class="page-head">
@@ -1291,23 +1317,77 @@ const ResponsesView = {
         </div>
       </div>
 
-      <div v-if="error" class="alert bad">{{ error }}</div>
-      <p v-if="loading" class="empty">Loading…</p>
-      <div v-else-if="!lessons.length" class="card empty">
-        No questions in this course yet.
+      <div class="tabs" style="margin-bottom:1rem">
+        <button :class="{ on: mode === 'grid' }" @click="switchMode('grid')">Grid</button>
+        <button :class="{ on: mode === 'question' }" @click="switchMode('question')">By question</button>
       </div>
 
-      <div v-for="l in lessons" :key="l.lesson_id" class="card" style="margin-bottom:1rem">
-        <div class="pad" style="border-bottom:1px solid var(--line)">
-          <b>{{ l.lesson_code }} · {{ l.lesson_title }}</b>
+      <div v-if="error" class="alert bad">{{ error }}</div>
+
+      <template v-if="mode === 'grid'">
+        <p v-if="gridLoading" class="empty">Loading…</p>
+        <div v-else-if="!grid.questions.length" class="card empty">
+          No questions in this course yet.
         </div>
-        <div v-for="q in l.quizzes" :key="q.block_id" class="lesson-row">
-          <span class="pill">{{ q.type === 'quiz_mc' ? 'Choice' : (q.type === 'quiz_open' ? 'Open' : 'Upload') }}</span>
-          <div class="grow">{{ q.question }}</div>
-          <span class="small muted">{{ q.respondents }} answer{{ q.respondents === 1 ? '' : 's' }}</span>
-          <button class="btn ghost sm" @click="openQuiz(l.lesson_id, q)">View</button>
+        <div v-else-if="!grid.students.length" class="card empty">
+          No students enrolled in this course yet.
         </div>
-      </div>
+        <div v-else class="card" style="overflow-x:auto">
+          <table class="assign-table responses-grid">
+            <thead>
+              <tr>
+                <th class="sticky">Student</th>
+                <th v-for="q in grid.questions" :key="q.block_id" class="course-col">
+                  <span class="small muted">{{ q.lesson_code }}</span><br>{{ q.question }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="s in grid.students" :key="s.id">
+                <td class="sticky"><b>{{ s.name }}</b></td>
+                <td v-for="q in grid.questions" :key="q.block_id">
+                  <template v-if="cell(s.id, q.block_id)">
+                    <span v-if="q.type === 'quiz_mc'">
+                      {{ cell(s.id, q.block_id).option_text }}
+                      <span class="pill" :class="cell(s.id, q.block_id).correct ? 'ok' : 'red'">
+                        {{ cell(s.id, q.block_id).correct ? '✓' : '✗' }}
+                      </span>
+                    </span>
+                    <span v-else-if="q.type === 'upload'">
+                      <a :href="cell(s.id, q.block_id).media_url" target="_blank" rel="noopener">
+                        {{ isAudioUrl(cell(s.id, q.block_id).media_url) ? '🎧 Audio' : '🖼 Photo' }}
+                      </a>
+                    </span>
+                    <span v-else class="cell-text" :title="cell(s.id, q.block_id).value_text">
+                      {{ cell(s.id, q.block_id).value_text }}
+                    </span>
+                  </template>
+                  <span v-else class="muted">&mdash;</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
+
+      <template v-else>
+        <p v-if="lessonsLoading" class="empty">Loading…</p>
+        <div v-else-if="!lessons.length" class="card empty">
+          No questions in this course yet.
+        </div>
+
+        <div v-for="l in lessons" :key="l.lesson_id" class="card" style="margin-bottom:1rem">
+          <div class="pad" style="border-bottom:1px solid var(--line)">
+            <b>{{ l.lesson_code }} · {{ l.lesson_title }}</b>
+          </div>
+          <div v-for="q in l.quizzes" :key="q.block_id" class="lesson-row">
+            <span class="pill">{{ q.type === 'quiz_mc' ? 'Choice' : (q.type === 'quiz_open' ? 'Open' : 'Upload') }}</span>
+            <div class="grow">{{ q.question }}</div>
+            <span class="small muted">{{ q.respondents }} answer{{ q.respondents === 1 ? '' : 's' }}</span>
+            <button class="btn ghost sm" @click="openQuiz(l.lesson_id, q)">View</button>
+          </div>
+        </div>
+      </template>
 
       <div v-if="open" class="modal-backdrop" @click.self="open = null">
         <div class="modal">
