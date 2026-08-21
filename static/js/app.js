@@ -1260,12 +1260,22 @@ const ResponsesView = {
       lessons: [], lessonsLoading: false, lessonsLoaded: false,
       open: null, detail: null, error: '',
       playingUrl: '', audioEl: null,
+      hiddenCols: {},   // presentation-only masking, never persisted
     };
   },
   beforeUnmount() {
     if (this.audioEl) this.audioEl.pause();
   },
   methods: {
+    isHidden(colId) { return !!this.hiddenCols[colId]; },
+    toggleHidden(colId) { this.hiddenCols[colId] = !this.hiddenCols[colId]; },
+    hideAllCols() {
+      const cols = {};
+      cols.student = true;
+      this.grid.questions.forEach((q) => { cols[q.block_id] = true; });
+      this.hiddenCols = cols;
+    },
+    showAllCols() { this.hiddenCols = {}; },
     toggleAudio(url) {
       if (this.audioEl) this.audioEl.pause();
       if (this.playingUrl === url) {
@@ -1347,48 +1357,70 @@ const ResponsesView = {
         <div v-else-if="!grid.students.length" class="card empty">
           No students enrolled in this course yet.
         </div>
-        <div v-else class="card" style="overflow-x:auto">
-          <table class="assign-table responses-grid">
-            <thead>
-              <tr>
-                <th class="sticky">Student</th>
-                <th v-for="q in grid.questions" :key="q.block_id" class="course-col">
-                  <span class="small muted">{{ q.lesson_code }}</span><br>{{ q.question }}
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="s in grid.students" :key="s.id">
-                <td class="sticky"><b>{{ s.name }}</b></td>
-                <td v-for="q in grid.questions" :key="q.block_id">
-                  <template v-if="cell(s.id, q.block_id)">
-                    <span v-if="q.type === 'quiz_mc'">
-                      {{ cell(s.id, q.block_id).option_text }}
-                      <span class="pill" :class="cell(s.id, q.block_id).correct ? 'ok' : 'red'">
-                        {{ cell(s.id, q.block_id).correct ? '✓' : '✗' }}
+        <div v-else>
+          <div class="row" style="margin-bottom:.6rem">
+            <p class="small muted grow" style="margin:0">
+              Tick a column to mask it &mdash; handy for presenting the grid without
+              giving away every answer (or name) at once.
+            </p>
+            <button class="btn ghost sm shrink" @click="hideAllCols">Hide all</button>
+            <button class="btn ghost sm shrink" @click="showAllCols">Show all</button>
+          </div>
+          <div class="card" style="overflow-x:auto">
+            <table class="assign-table responses-grid">
+              <thead>
+                <tr>
+                  <th class="sticky">
+                    <label class="col-toggle">
+                      <input type="checkbox" :checked="isHidden('student')" @change="toggleHidden('student')">
+                      Student
+                    </label>
+                  </th>
+                  <th v-for="q in grid.questions" :key="q.block_id" class="course-col">
+                    <label class="col-toggle">
+                      <input type="checkbox" :checked="isHidden(q.block_id)" @change="toggleHidden(q.block_id)">
+                      <span><span class="small muted">{{ q.lesson_code }}</span><br>{{ q.question }}</span>
+                    </label>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="s in grid.students" :key="s.id">
+                  <td class="sticky">
+                    <span v-if="isHidden('student')" class="mask-bar"></span>
+                    <b v-else>{{ s.name }}</b>
+                  </td>
+                  <td v-for="q in grid.questions" :key="q.block_id">
+                    <span v-if="isHidden(q.block_id)" class="mask-bar"></span>
+                    <template v-else-if="cell(s.id, q.block_id)">
+                      <span v-if="q.type === 'quiz_mc'">
+                        {{ cell(s.id, q.block_id).option_text }}
+                        <span class="pill" :class="cell(s.id, q.block_id).correct ? 'ok' : 'red'">
+                          {{ cell(s.id, q.block_id).correct ? '✓' : '✗' }}
+                        </span>
                       </span>
-                    </span>
-                    <span v-else-if="q.type === 'upload'">
-                      <button v-if="isAudioUrl(cell(s.id, q.block_id).media_url)"
-                              class="icon-btn play-btn"
-                              :class="{ playing: playingUrl === cell(s.id, q.block_id).media_url }"
-                              :title="playingUrl === cell(s.id, q.block_id).media_url ? 'Pause' : 'Play'"
-                              @click="toggleAudio(cell(s.id, q.block_id).media_url)">
-                        {{ playingUrl === cell(s.id, q.block_id).media_url ? '⏸' : '▶' }}
-                      </button>
-                      <a v-else :href="cell(s.id, q.block_id).media_url" target="_blank" rel="noopener">
-                        <img :src="cell(s.id, q.block_id).media_url" class="grid-thumb">
-                      </a>
-                    </span>
-                    <span v-else class="cell-text" :title="cell(s.id, q.block_id).value_text">
-                      {{ cell(s.id, q.block_id).value_text }}
-                    </span>
-                  </template>
-                  <span v-else class="muted">&mdash;</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                      <span v-else-if="q.type === 'upload'">
+                        <button v-if="isAudioUrl(cell(s.id, q.block_id).media_url)"
+                                class="icon-btn play-btn"
+                                :class="{ playing: playingUrl === cell(s.id, q.block_id).media_url }"
+                                :title="playingUrl === cell(s.id, q.block_id).media_url ? 'Pause' : 'Play'"
+                                @click="toggleAudio(cell(s.id, q.block_id).media_url)">
+                          {{ playingUrl === cell(s.id, q.block_id).media_url ? '⏸' : '▶' }}
+                        </button>
+                        <a v-else :href="cell(s.id, q.block_id).media_url" target="_blank" rel="noopener">
+                          <img :src="cell(s.id, q.block_id).media_url" class="grid-thumb">
+                        </a>
+                      </span>
+                      <span v-else class="cell-text" :title="cell(s.id, q.block_id).value_text">
+                        {{ cell(s.id, q.block_id).value_text }}
+                      </span>
+                    </template>
+                    <span v-else class="muted">&mdash;</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </template>
 

@@ -342,6 +342,15 @@ tbody tr:hover { background: var(--paper); }
 }
 .responses-grid .play-btn { font-size: 1rem; }
 .responses-grid .play-btn.playing { border-color: var(--red); color: var(--red); }
+.responses-grid .col-toggle {
+  display: flex; align-items: flex-start; gap: .35rem; cursor: pointer; font-weight: inherit;
+  text-transform: inherit; letter-spacing: inherit; color: inherit;
+}
+.responses-grid .col-toggle input { margin-top: .2rem; flex: 0 0 auto; cursor: pointer; }
+.responses-grid .mask-bar {
+  display: inline-block; width: 70%; min-width: 24px; height: .85em;
+  background: var(--line); border-radius: 4px; vertical-align: middle;
+}
 .code-chip {
   font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
   font-size: .8rem; background: var(--paper); border: 1px solid var(--line);
