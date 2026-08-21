@@ -1259,9 +1259,24 @@ const ResponsesView = {
       grid: null, gridLoading: true,
       lessons: [], lessonsLoading: false, lessonsLoaded: false,
       open: null, detail: null, error: '',
+      playingUrl: '', audioEl: null,
     };
   },
+  beforeUnmount() {
+    if (this.audioEl) this.audioEl.pause();
+  },
   methods: {
+    toggleAudio(url) {
+      if (this.audioEl) this.audioEl.pause();
+      if (this.playingUrl === url) {
+        this.playingUrl = '';
+        return;
+      }
+      this.audioEl = new Audio(url);
+      this.audioEl.addEventListener('ended', () => { this.playingUrl = ''; });
+      this.audioEl.play();
+      this.playingUrl = url;
+    },
     async loadGrid() {
       this.gridLoading = true;
       try {
@@ -1354,8 +1369,15 @@ const ResponsesView = {
                       </span>
                     </span>
                     <span v-else-if="q.type === 'upload'">
-                      <a :href="cell(s.id, q.block_id).media_url" target="_blank" rel="noopener">
-                        {{ isAudioUrl(cell(s.id, q.block_id).media_url) ? '🎧 Audio' : '🖼 Photo' }}
+                      <button v-if="isAudioUrl(cell(s.id, q.block_id).media_url)"
+                              class="icon-btn play-btn"
+                              :class="{ playing: playingUrl === cell(s.id, q.block_id).media_url }"
+                              :title="playingUrl === cell(s.id, q.block_id).media_url ? 'Pause' : 'Play'"
+                              @click="toggleAudio(cell(s.id, q.block_id).media_url)">
+                        {{ playingUrl === cell(s.id, q.block_id).media_url ? '⏸' : '▶' }}
+                      </button>
+                      <a v-else :href="cell(s.id, q.block_id).media_url" target="_blank" rel="noopener">
+                        <img :src="cell(s.id, q.block_id).media_url" class="grid-thumb">
                       </a>
                     </span>
                     <span v-else class="cell-text" :title="cell(s.id, q.block_id).value_text">
