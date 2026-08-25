@@ -40,17 +40,20 @@ def extension_for(filename, content_type):
 
 def put(file_storage, key, allowed_types, max_bytes=MAX_BYTES):
     """Upload a Werkzeug FileStorage. Raises ValueError on a rejected file."""
+    name = file_storage.filename or "that file"
     content_type = (file_storage.mimetype or "").lower()
     if content_type not in allowed_types:
-        raise ValueError(f"file type not allowed: {content_type or 'unknown'}")
+        raise ValueError(f'"{name}" is {content_type or "an unrecognized type"}, which isn\'t allowed here')
 
     file_storage.stream.seek(0, os.SEEK_END)
     size = file_storage.stream.tell()
     file_storage.stream.seek(0)
     if size == 0:
-        raise ValueError("file is empty")
+        raise ValueError(f'"{name}" came through as an empty file (0 bytes) — this can happen '
+                          "right after recording on a phone; try again in a moment")
     if size > max_bytes:
-        raise ValueError(f"file is larger than {max_bytes // (1024 * 1024)}MB")
+        size_mb = size / (1024 * 1024)
+        raise ValueError(f'"{name}" is {size_mb:.0f}MB, over the {max_bytes // (1024 * 1024)}MB limit')
 
     client().upload_fileobj(
         file_storage.stream, bucket(), key,

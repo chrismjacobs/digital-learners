@@ -918,7 +918,12 @@ def upload_my_media():
     content_type = (file.mimetype or "").lower()
     kind = next((k for k in accept if content_type in UPLOAD_KINDS[k][0]), None)
     if kind is None:
-        raise Invalid("That file type isn't accepted here.")
+        raise Invalid(
+            f"\"{file.filename or 'that file'}\" looks like {content_type or 'an unrecognized type'}, "
+            f"which this upload doesn't accept (it takes {' or '.join(accept)}). "
+            "If this was recorded on the phone, try re-picking the file from Files/Photos "
+            "rather than recording it directly."
+        )
     allowed_types, cap_mb = UPLOAD_KINDS[kind]
 
     ext = storage.extension_for(file.filename, file.mimetype)
