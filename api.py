@@ -1004,6 +1004,19 @@ def complete_lesson(lesson_id):
     if not lesson_lock_state(user, lesson["course_id"])[lesson_id]["unlocked"]:
         return jsonify(error="This lesson isn't open yet."), 403
 
+    interactive_ids = {b["id"] for b in blocks_of(lesson) if b.get("type") in INTERACTIVE_TYPES}
+    if interactive_ids:
+        answered_ids = {r["block_id"] for r in db.query(
+            "SELECT block_id FROM responses WHERE user_id = %s AND lesson_id = %s",
+            (user["id"], lesson_id),
+        )}
+        missing = len(interactive_ids - answered_ids)
+        if missing:
+            raise Invalid(
+                f"Answer everything first — {missing} of {len(interactive_ids)} "
+                f"question{'s' if len(interactive_ids) != 1 else ''} still need{'s' if missing == 1 else ''} a response."
+            )
+
     db.execute(
         """INSERT INTO lesson_completions (id, user_id, lesson_id)
            VALUES (%s, %s, %s) ON CONFLICT (user_id, lesson_id) DO NOTHING""",

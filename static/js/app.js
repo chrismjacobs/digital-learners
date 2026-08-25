@@ -703,6 +703,12 @@ const LessonView = {
       loading: true, error: '', saving: false, justCompleted: false,
     };
   },
+  computed: {
+    unansweredCount() {
+      if (!this.lesson) return 0;
+      return this.lesson.blocks.filter((b) => blockMeta(b.type).interactive && !this.answers[b.id]).length;
+    },
+  },
   methods: {
     async load() {
       try {
@@ -771,15 +777,16 @@ const LessonView = {
 
         <div class="complete-bar">
           <div>
-            <b v-if="justCompleted">Nice work! The next lesson is unlocked. 🎉</b>
+            <b v-if="justCompleted">Nice work! 🎉</b>
             <b v-else-if="completed">You finished this lesson.</b>
-            <b v-else>Finished? Mark it complete to unlock the next lesson.</b>
+            <b v-else-if="unansweredCount">Answer the {{ unansweredCount }} remaining question{{ unansweredCount === 1 ? '' : 's' }} to mark this lesson complete.</b>
+            <b v-else>Finished? Mark it complete to track your progress.</b>
           </div>
           <div style="display:flex;gap:.5rem">
             <a v-if="user.role === 'teacher'" class="btn ghost"
                :href="'#/builder/' + lesson.id">&larr; Back to edit</a>
             <a class="btn ghost" :href="'#/course/' + lesson.course_id">Back to course</a>
-            <button class="btn" :disabled="saving || completed" @click="complete">
+            <button class="btn" :disabled="saving || completed || !!unansweredCount" @click="complete">
               {{ completed ? '✓ Complete' : (saving ? 'Saving…' : 'Mark lesson complete') }}
             </button>
           </div>
