@@ -70,7 +70,8 @@ def clean_goals(value):
 
 
 def public_user(row):
-    return {"id": row["id"], "name": row["name"], "email": row["email"], "role": row["role"]}
+    return {"id": row["id"], "name": row["name"], "email": row["email"], "role": row["role"],
+            "student_number": row.get("student_number")}
 
 
 def image_json(row):
@@ -222,13 +223,17 @@ def progress_for_courses(user_id, course_ids):
 @api.post("/register")
 def register():
     data = body()
-    code, name, email, password = need(data, "code", "name", "email", "password")
+    code, name, email, password, student_number = need(
+        data, "code", "name", "email", "password", "student_number"
+    )
     email = email.lower()
 
     if len(password) < 6:
         raise Invalid("Password must be at least 6 characters.")
     if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
         raise Invalid("That doesn't look like an email address.")
+    if not student_number.isdigit():
+        raise Invalid("Student ID must be numbers only — no letters.")
 
     invite = db.one(
         "SELECT * FROM invite_codes WHERE lower(code) = lower(%s) FOR UPDATE", (code,)
@@ -239,15 +244,17 @@ def register():
         raise Invalid("That registration code has been used up.")
     if db.one("SELECT 1 FROM users WHERE email = %s", (email,)):
         raise Invalid("An account with that email already exists.")
+    if db.one("SELECT 1 FROM users WHERE student_number = %s", (student_number,)):
+        raise Invalid("That student ID is already registered.")
 
     # The code carries the class, and the class carries the level. That's how a student
     # gets both without ever choosing them.
     user_id = db.new_id("u")
     db.execute(
-        """INSERT INTO users (id, role, name, email, password_hash, class_id, invite_code_id)
-           VALUES (%s, 'student', %s, %s, %s, %s, %s)""",
+        """INSERT INTO users (id, role, name, email, password_hash, class_id, invite_code_id, student_number)
+           VALUES (%s, 'student', %s, %s, %s, %s, %s, %s)""",
         (user_id, name, email, generate_password_hash(password),
-         invite["class_id"], invite["id"]),
+         invite["class_id"], invite["id"], student_number),
     )
     db.execute("UPDATE invite_codes SET uses = uses + 1 WHERE id = %s", (invite["id"],))
 
@@ -1093,9 +1100,9 @@ def list_students():
         sql += " AND u.class_id = %s"
         params.append(class_id)
     if q:
-        # The registration code is searchable too, not just a column.
-        sql += " AND (u.name ILIKE %s OR u.email ILIKE %s OR ic.code ILIKE %s)"
-        params += [f"%{q}%", f"%{q}%", f"%{q}%"]
+        # The registration code and student ID are searchable too, not just a column.
+        sql += " AND (u.name ILIKE %s OR u.email ILIKE %s OR ic.code ILIKE %s OR u.student_number ILIKE %s)"
+        params += [f"%{q}%", f"%{q}%", f"%{q}%", f"%{q}%"]
     sql += " ORDER BY u.name"
 
     students = db.query(sql, params)
@@ -1111,6 +1118,7 @@ def list_students():
 
     return jsonify(students=[{
         "id": s["id"], "name": s["name"], "email": s["email"],
+        "student_number": s["student_number"],
         "created_at": s["created_at"].isoformat(),
         "active": s["active"],
         "class_id": s["class_id"], "class_name": s["class_name"],
@@ -1157,6 +1165,16 @@ def update_student(student_id):
     if "active" in data:
         sets.append("active = %s")
         params.append(bool(data["active"]))
+
+    if "student_number" in data:
+        new_number = (data["student_number"] or "").strip()
+        if not new_number.isdigit():
+            raise Invalid("Student ID must be numbers only — no letters.")
+        if db.one("SELECT 1 FROM users WHERE student_number = %s AND id != %s",
+                  (new_number, student_id)):
+            raise Invalid("That student ID is already registered.")
+        sets.append("student_number = %s")
+        params.append(new_number)
 
     if not sets:
         return jsonify(ok=True)

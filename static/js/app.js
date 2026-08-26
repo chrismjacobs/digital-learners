@@ -26,11 +26,16 @@ const AuthView = {
   props: ['onSignedIn'],
   data() {
     return {
-      tab: 'login', busy: false, error: '',
-      form: { code: '', name: '', email: '', password: '' },
+      tab: 'login', busy: false, error: '', studentIdWarning: false,
+      form: { code: '', name: '', email: '', password: '', student_number: '' },
     };
   },
   methods: {
+    filterStudentId(event) {
+      const digitsOnly = event.target.value.replace(/\D/g, '');
+      this.studentIdWarning = digitsOnly !== event.target.value;
+      this.form.student_number = digitsOnly;
+    },
     async submit() {
       this.busy = true;
       this.error = '';
@@ -69,6 +74,14 @@ const AuthView = {
             <div v-if="tab === 'register'" class="field">
               <label>Your name</label>
               <input type="text" v-model="form.name" required>
+            </div>
+            <div v-if="tab === 'register'" class="field">
+              <label>Student ID <span class="muted small">(numbers only)</span></label>
+              <input type="text" inputmode="numeric" pattern="[0-9]*"
+                     :value="form.student_number" @input="filterStudentId" required>
+              <p v-if="studentIdWarning" class="small" style="color:var(--red);margin:.3rem 0 0">
+                Numbers only — letters aren't accepted.
+              </p>
             </div>
             <div class="field">
               <label>Email</label>
@@ -1013,6 +1026,17 @@ const StudentsView = {
         this.error = err.message;
       }
     },
+    async updateStudentNumber(student, value) {
+      const student_number = (value || '').trim();
+      if (student_number === (student.student_number || '')) return;
+      try {
+        await API.patch('/students/' + student.id, { student_number });
+        student.student_number = student_number;
+      } catch (err) {
+        this.error = err.message;
+        await this.load();
+      }
+    },
     /* Moving a student to a class in another level makes them leave this tab — that is
        the intended effect. Their course access is left alone. */
     async moveStudent(student, classId) {
@@ -1144,6 +1168,11 @@ const StudentsView = {
                 <span v-if="!s.active" class="pill red" style="margin-left:.4rem">Off</span>
                 <br>
                 <span class="small muted">{{ s.email }}</span>
+                <br>
+                <input type="text" inputmode="numeric" pattern="[0-9]*"
+                       class="small" style="width:7rem;margin-top:.2rem"
+                       :value="s.student_number" placeholder="Student ID"
+                       @change="updateStudentNumber(s, $event.target.value)">
               </td>
               <td>
                 <select :value="s.class_id || ''"

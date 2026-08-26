@@ -102,6 +102,12 @@ CREATE TABLE users (
                                                   -- false blocks login, keeps the account
   class_id       text REFERENCES classes(id) ON DELETE SET NULL,       -- NULL = unassigned
   invite_code_id text REFERENCES invite_codes(id) ON DELETE SET NULL,
+  student_number text,             -- institution student ID, digits only; NULL for the
+                                   -- teacher row. Mandatory for students, enforced in
+                                   -- api.py (register + student-edit), not by a DB
+                                   -- NOT NULL. Unique via a plain unique index — Postgres
+                                   -- allows multiple NULLs there, so the teacher row and
+                                   -- any pre-migration student don't collide.
   created_at     timestamptz NOT NULL DEFAULT now()
 );
 
@@ -350,7 +356,8 @@ trust the client for lock state or enrollment.**
 
 **Auth**
 ```
-POST /api/register        {code, name, email, password}  -> validates invite_code, makes student
+POST /api/register        {code, name, email, password, student_number}  -> validates invite_code
+                          and student_number (digits only, unique), makes student
 POST /api/login           {email, password}   -> 403 if the student's access is turned off
 POST /api/logout
 GET  /api/me
@@ -419,13 +426,16 @@ DELETE /api/classes/:id              refused (400) while any student is still in
 GET  /api/students?level=&class_id=&q=   the table. `level` is a category_id, or "none"
                                          for students with no class yet. Exactly one
                                          level at a time — there is no "all levels".
-                                         `q` matches name, email, or registration code.
+                                         `q` matches name, email, registration code, or
+                                         student ID.
 GET  /api/students/counts                {levels: {cat_id: n}, unassigned: n} — tab badges
 GET  /api/students/:id                   profile + progress + their answers
-PATCH /api/students/:id                  {class_id?, active?}  move to another class (and
-                                         level), and/or turn access off/on. Enrollments
-                                         are left untouched either way. active=false blocks
-                                         the student's login; the account and answers stay.
+PATCH /api/students/:id                  {class_id?, active?, student_number?}  move to
+                                         another class (and level), turn access off/on,
+                                         and/or fix a mistyped student ID (digits only,
+                                         unique). Enrollments are left untouched either
+                                         way. active=false blocks the student's login;
+                                         the account and answers stay.
 POST /api/courses/:id/enrollments        {user_id}     assign access
 DELETE /api/courses/:id/enrollments/:user_id           unassign
 GET  /api/invite-codes                   only PENDING codes (active and not yet exhausted;
@@ -523,13 +533,16 @@ while some student has no class. Each tab carries its student count, and the pag
 a level that actually has students.
 
 Columns: **Student · Class · Code · Access · Lessons done · [one checkbox per course in this
-level]**. The class cell is a dropdown that moves the student to another class (and so another
-level); their existing course access is deliberately left alone. The **Access** cell is a
-turn-off/turn-on toggle: off blocks the student's login (a disabled row renders muted with an
-"Off" pill) but keeps the account and answers, so it's reversible. The code column shows the
-registration code they actually joined with, and the search box matches name, email, or code.
-Below the table, a Responses section lists every quiz with a respondent count that opens the
-answer-sharing view.
+level]**. The Student cell also carries an editable **student ID** field (digits only,
+unique) under the name/email — that's where a mistyped ID gets fixed, rather than a
+dedicated column, to keep the table from getting wider. The class cell is a dropdown that
+moves the student to another class (and so another level); their existing course access is
+deliberately left alone. The **Access** cell is a turn-off/turn-on toggle: off blocks the
+student's login (a disabled row renders muted with an "Off" pill) but keeps the account and
+answers, so it's reversible. The code column shows the registration code they actually
+joined with, and the search box matches name, email, code, or student ID. Below the table,
+a Responses section lists every quiz with a respondent count that opens the answer-sharing
+view.
 
 **Classes & codes (teacher).** A modal off the student dashboard, framed as **pending
 invites** — it lists only codes not yet used (a code disappears once a student registers with

@@ -128,6 +128,24 @@ ALTER TABLE invite_codes ADD COLUMN IF NOT EXISTS class_id       text REFERENCES
 ALTER TABLE users        ADD COLUMN IF NOT EXISTS class_id       text REFERENCES classes(id) ON DELETE SET NULL;
 ALTER TABLE users        ADD COLUMN IF NOT EXISTS invite_code_id text REFERENCES invite_codes(id) ON DELETE SET NULL;
 
+-- The institution-issued student ID (digits only). Mandatory going forward at
+-- registration (enforced in api.py, not a NOT NULL here since teacher rows have none).
+-- Backfill assigns sequential numbers to any pre-existing student missing one, so this
+-- stays a one-time no-op once every student has a real value.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS student_number text;
+
+WITH numbered AS (
+  SELECT id, row_number() OVER (ORDER BY created_at) AS rn
+    FROM users
+   WHERE role = 'student' AND (student_number IS NULL OR student_number = '')
+)
+UPDATE users SET student_number = (10000000 + numbered.rn)::text
+  FROM numbered
+ WHERE users.id = numbered.id;
+
+-- Multiple NULLs are allowed (teacher rows); any two real values must be distinct.
+CREATE UNIQUE INDEX IF NOT EXISTS users_student_number_uidx ON users (student_number);
+
 CREATE INDEX IF NOT EXISTS course_images_course_idx     ON course_images (course_id, sort_order);
 CREATE INDEX IF NOT EXISTS classes_category_idx         ON classes (category_id);
 CREATE INDEX IF NOT EXISTS users_class_idx              ON users (class_id);
