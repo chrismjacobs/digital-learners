@@ -284,6 +284,8 @@ tbody tr:hover { background: var(--paper); }
   background: var(--white); padding: .9rem 1rem; margin-bottom: .8rem; box-shadow: var(--shadow);
 }
 .edit-block.interactive { border-left-color: var(--red); }
+.edit-block { cursor: pointer; }
+.edit-block.selected { box-shadow: 0 0 0 2px var(--navy), var(--shadow); }
 .edit-head { display: flex; align-items: center; gap: .5rem; margin-bottom: .7rem; }
 .edit-head .grow { flex: 1; }
 .icon-btn {
@@ -329,12 +331,31 @@ tbody tr:hover { background: var(--paper); }
 .assign-table tr.disabled td.sticky b { color: var(--muted); }
 .assign-table select { padding: .3rem .4rem; font-size: .85rem; }
 
-/* Instructor's answers-at-a-glance grid: one row per student, one column per question. */
-.responses-grid th.course-col { max-width: 160px; }
+/* Instructor's answers-at-a-glance grid: one row per student, one column per question.
+   Headers wrap to two subdued lines rather than one long truncated one — narrower
+   columns, more of the table visible at once. Every header in the row still ends up
+   the same height, since a table row always grows to fit its tallest cell. */
+.responses-grid th.course-col {
+  max-width: 180px; white-space: normal; vertical-align: middle;
+  text-transform: none; letter-spacing: normal; font-weight: 500; font-size: .82rem;
+}
 .responses-grid td { max-width: 160px; }
+.responses-grid .col-toggle { align-items: center; }
+.responses-grid .col-toggle .header-text {
+  flex: 1; min-width: 0; cursor: pointer; border-bottom: 1px dotted var(--muted);
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
+  overflow: hidden; line-height: 1.25;
+}
+.responses-grid .col-toggle .header-text.expanded {
+  -webkit-line-clamp: unset; overflow: visible; border-bottom: none;
+}
 .responses-grid .cell-text {
   display: inline-block; max-width: 150px; overflow: hidden; text-overflow: ellipsis;
-  white-space: nowrap; vertical-align: middle;
+  white-space: nowrap; vertical-align: middle; cursor: pointer;
+  border-bottom: 1px dotted var(--muted);
+}
+.responses-grid .cell-text.expanded {
+  max-width: none; white-space: normal; overflow: visible; border-bottom: none;
 }
 .responses-grid .grid-thumb {
   width: 40px; height: 40px; object-fit: cover; border-radius: 6px;
@@ -346,7 +367,7 @@ tbody tr:hover { background: var(--paper); }
   display: flex; align-items: flex-start; gap: .35rem; cursor: pointer; font-weight: inherit;
   text-transform: inherit; letter-spacing: inherit; color: inherit;
 }
-.responses-grid .col-toggle input { margin-top: .2rem; flex: 0 0 auto; cursor: pointer; }
+.responses-grid .col-toggle input { flex: 0 0 auto; cursor: pointer; }
 .responses-grid .mask-bar {
   display: inline-block; width: 70%; min-width: 24px; height: .85em;
   background: var(--line); border-radius: 4px; vertical-align: middle;

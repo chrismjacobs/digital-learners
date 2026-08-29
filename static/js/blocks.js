@@ -184,8 +184,8 @@ window.BlockView = {
 /* ------------------------------------------------------------------ editor */
 
 window.BlockEditor = {
-  props: ['block', 'index', 'total', 'lessonId'],
-  emits: ['move', 'remove'],
+  props: ['block', 'index', 'total', 'lessonId', 'selected'],
+  emits: ['move', 'remove', 'select'],
   data() { return { uploading: false, uploadError: '' }; },
   computed: {
     meta() { return blockMeta(this.block.type); },
@@ -232,13 +232,13 @@ window.BlockEditor = {
     },
   },
   template: `
-    <div class="edit-block" :class="{ interactive: meta.interactive }">
+    <div class="edit-block" :class="{ interactive: meta.interactive, selected: selected }" @click="$emit('select')">
       <div class="edit-head">
         <span class="pill" :class="meta.interactive ? 'red' : ''">{{ meta.label }}</span>
         <span class="grow"></span>
-        <button class="icon-btn" title="Move up" :disabled="index === 0" @click="$emit('move', -1)">&uarr;</button>
-        <button class="icon-btn" title="Move down" :disabled="index === total - 1" @click="$emit('move', 1)">&darr;</button>
-        <button class="icon-btn" title="Delete" @click="$emit('remove')">&times;</button>
+        <button class="icon-btn" title="Move up" :disabled="index === 0" @click.stop="$emit('move', -1)">&uarr;</button>
+        <button class="icon-btn" title="Move down" :disabled="index === total - 1" @click.stop="$emit('move', 1)">&darr;</button>
+        <button class="icon-btn" title="Delete" @click.stop="$emit('remove')">&times;</button>
       </div>
 
       <input v-if="block.type === 'title'" type="text" v-model="block.text" placeholder="Lesson title">

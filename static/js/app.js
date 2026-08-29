@@ -813,6 +813,7 @@ const BuilderView = {
   data() {
     return {
       lesson: null, blocks: [], loading: true, error: '', saved: false, saving: false,
+      selected: null,   // index of the clicked block; new parts are inserted right after it
     };
   },
   methods: {
@@ -827,8 +828,13 @@ const BuilderView = {
         this.loading = false;
       }
     },
+    select(index) {
+      this.selected = this.selected === index ? null : index;
+    },
     add(type) {
-      this.blocks.push(makeBlock(type));
+      const insertAt = this.selected === null ? this.blocks.length : this.selected + 1;
+      this.blocks.splice(insertAt, 0, makeBlock(type));
+      this.selected = insertAt;
       this.saved = false;
     },
     move(index, delta) {
@@ -836,11 +842,15 @@ const BuilderView = {
       if (target < 0 || target >= this.blocks.length) return;
       const [block] = this.blocks.splice(index, 1);
       this.blocks.splice(target, 0, block);
+      if (this.selected === index) this.selected = target;
+      else if (this.selected === target) this.selected = index;
       this.saved = false;
     },
     remove(index) {
       if (!confirm('Delete this part? Any answers to it stay in the database but stop showing.')) return;
       this.blocks.splice(index, 1);
+      if (this.selected === index) this.selected = null;
+      else if (this.selected !== null && this.selected > index) this.selected -= 1;
       this.saved = false;
     },
     async save() {
@@ -914,17 +924,24 @@ const BuilderView = {
           <div>
             <block-editor v-for="(block, i) in blocks" :key="block.id"
                           :block="block" :index="i" :total="blocks.length" :lesson-id="lesson.id"
-                          @move="(d) => move(i, d)" @remove="remove(i)"></block-editor>
+                          :selected="selected === i"
+                          @move="(d) => move(i, d)" @remove="remove(i)" @select="select(i)"></block-editor>
             <div v-if="!blocks.length" class="card empty">
               Empty lesson. Add your first part from the palette. →
             </div>
           </div>
 
           <div class="palette card pad">
-            <label>Add part</label>
+            <label>{{ selected === null ? 'Add part' : 'Insert after part ' + (selected + 1) }}</label>
             <button v-for="t in types" :key="t.type" class="btn ghost sm" @click="add(t.type)">
               + {{ t.label }}
             </button>
+            <button v-if="selected !== null" class="btn ghost sm" style="color:var(--muted)" @click="selected = null">
+              Add at the end instead
+            </button>
+            <p v-else class="small muted" style="margin:.5rem 0 0">
+              Click a part to insert the next one right after it.
+            </p>
           </div>
         </div>
       </div>
@@ -1292,12 +1309,35 @@ const ResponsesView = {
   data() {
     return {
       mode: 'grid',
-      grid: null, gridLoading: true,
+      grid: null, gridLoading: true, gridLesson: null,
       lessons: [], lessonsLoading: false, lessonsLoaded: false,
       open: null, detail: null, error: '',
       playingUrl: '', audioEl: null,
       hiddenCols: {},   // presentation-only masking, never persisted
+      expandedCells: {},   // presentation-only truncation override, never persisted
+      expandedHeaders: {},   // presentation-only truncation override, never persisted
     };
+  },
+  computed: {
+    /* One lesson's questions at a time — same "don't let the table sprawl" fix as the
+       student dashboard's level tabs (see .level-tabs). */
+    gridLessons() {
+      if (!this.grid) return [];
+      const byId = {};
+      const order = [];
+      this.grid.questions.forEach((q) => {
+        if (!byId[q.lesson_id]) {
+          byId[q.lesson_id] = { id: q.lesson_id, code: q.lesson_code, title: q.lesson_title, count: 0 };
+          order.push(byId[q.lesson_id]);
+        }
+        byId[q.lesson_id].count += 1;
+      });
+      return order;
+    },
+    gridQuestions() {
+      if (!this.grid) return [];
+      return this.grid.questions.filter((q) => q.lesson_id === this.gridLesson);
+    },
   },
   beforeUnmount() {
     if (this.audioEl) this.audioEl.pause();
@@ -1308,10 +1348,20 @@ const ResponsesView = {
     hideAllCols() {
       const cols = {};
       cols.student = true;
-      this.grid.questions.forEach((q) => { cols[q.block_id] = true; });
+      this.gridQuestions.forEach((q) => { cols[q.block_id] = true; });
       this.hiddenCols = cols;
     },
     showAllCols() { this.hiddenCols = {}; },
+    cellKey(studentId, blockId) { return studentId + ':' + blockId; },
+    isExpanded(studentId, blockId) { return !!this.expandedCells[this.cellKey(studentId, blockId)]; },
+    toggleExpand(studentId, blockId) {
+      const key = this.cellKey(studentId, blockId);
+      this.expandedCells = { ...this.expandedCells, [key]: !this.expandedCells[key] };
+    },
+    isHeaderExpanded(blockId) { return !!this.expandedHeaders[blockId]; },
+    toggleHeaderExpand(blockId) {
+      this.expandedHeaders = { ...this.expandedHeaders, [blockId]: !this.expandedHeaders[blockId] };
+    },
     toggleAudio(url) {
       if (this.audioEl) this.audioEl.pause();
       if (this.playingUrl === url) {
@@ -1327,6 +1377,7 @@ const ResponsesView = {
       this.gridLoading = true;
       try {
         this.grid = await API.get('/courses/' + route.id + '/responses/grid');
+        if (this.grid.questions.length) this.gridLesson = this.grid.questions[0].lesson_id;
       } catch (err) {
         this.error = err.message;
       } finally {
@@ -1394,6 +1445,13 @@ const ResponsesView = {
           No students enrolled in this course yet.
         </div>
         <div v-else>
+          <div class="level-tabs">
+            <button v-for="l in gridLessons" :key="l.id" :class="{ on: gridLesson === l.id }"
+                    @click="gridLesson = l.id">
+              {{ l.code }}
+              <span class="count">{{ l.count }}</span>
+            </button>
+          </div>
           <div class="row" style="margin-bottom:.6rem">
             <p class="small muted grow" style="margin:0">
               Tick a column to mask it &mdash; handy for presenting the grid without
@@ -1412,11 +1470,15 @@ const ResponsesView = {
                       Student
                     </label>
                   </th>
-                  <th v-for="q in grid.questions" :key="q.block_id" class="course-col">
-                    <label class="col-toggle">
+                  <th v-for="q in gridQuestions" :key="q.block_id" class="course-col">
+                    <div class="col-toggle">
                       <input type="checkbox" :checked="isHidden(q.block_id)" @change="toggleHidden(q.block_id)">
-                      <span><span class="small muted">{{ q.lesson_code }}</span><br>{{ q.question }}</span>
-                    </label>
+                      <span class="header-text" :class="{ expanded: isHeaderExpanded(q.block_id) }"
+                            :title="isHeaderExpanded(q.block_id) ? '' : q.question"
+                            @click="toggleHeaderExpand(q.block_id)">
+                        {{ q.question }}
+                      </span>
+                    </div>
                   </th>
                 </tr>
               </thead>
@@ -1426,7 +1488,7 @@ const ResponsesView = {
                     <span v-if="isHidden('student')" class="mask-bar"></span>
                     <b v-else>{{ s.name }}</b>
                   </td>
-                  <td v-for="q in grid.questions" :key="q.block_id">
+                  <td v-for="q in gridQuestions" :key="q.block_id">
                     <span v-if="isHidden(q.block_id)" class="mask-bar"></span>
                     <template v-else-if="cell(s.id, q.block_id)">
                       <span v-if="q.type === 'quiz_mc'">
@@ -1447,7 +1509,8 @@ const ResponsesView = {
                           <img :src="cell(s.id, q.block_id).media_url" class="grid-thumb">
                         </a>
                       </span>
-                      <span v-else class="cell-text" :title="cell(s.id, q.block_id).value_text">
+                      <span v-else class="cell-text" :class="{ expanded: isExpanded(s.id, q.block_id) }"
+                            @click="toggleExpand(s.id, q.block_id)">
                         {{ cell(s.id, q.block_id).value_text }}
                       </span>
                     </template>

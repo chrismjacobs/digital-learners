@@ -1430,6 +1430,7 @@ def course_responses_grid(course_id):
             questions.append({
                 "block_id": b["id"], "type": b["type"],
                 "lesson_id": lesson["id"], "lesson_code": lesson["code"],
+                "lesson_title": lesson["title"],
                 "question": b.get("question") or b.get("prompt") or "(untitled)",
             })
             if b.get("type") == "quiz_mc":
